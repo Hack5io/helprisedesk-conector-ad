@@ -1,0 +1,75 @@
+name: CI
+
+# Antes de esto, el único workflow (release.yml) solo corría en un tag
+# "v*" -- go test ./... nunca corría en un push/PR normal, y ningún
+# escaneo de dependencias/CVEs corría nunca. Mismo criterio que el CI
+# del repo principal (Hack5io/Saas-MultiTenancy--HelpriseDesk,
+# .github/workflows/tests.yml): tests + análisis estático en cada push,
+# más un escaneo semanal de CVEs de la librería estándar de Go (una
+# versión de Go puede tener un CVE nuevo sin que ningún commit de este
+# repo cambie, ver GO-2025-3750 -- encontrado en vivo, 2026-09-18).
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # 03:00 America/Argentina (UTC-3) los lunes
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt (falla si hay archivos sin formatear)
+        run: |
+          faltantes=$(gofmt -l .)
+          if [ -n "$faltantes" ]; then
+            echo "Archivos sin formatear (correr 'gofmt -w .'):"
+            echo "$faltantes"
+            exit 1
+          fi
+
+      # Cross-compila para Windows -- el único target real del binario
+      # (ver release.yml), así que un error de compilación específico
+      # de Windows (ej. algo en dpapi_windows.go) tiene que fallar acá,
+      # no recién al taggear un release.
+      - name: Compila para Windows
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go build ./...
+
+      # Los tests SÍ corren en Linux (no hace falta Windows para esto):
+      # dpapi_windows.go queda afuera del build en este SO (go:build
+      # windows), y dpapi_stub.go lo reemplaza -- ver el comentario en
+      # ese archivo. La criptografía real de DPAPI no tiene test
+      # automatizado (solo existe en Windows); se prueba a mano.
+      - name: Tests
+        run: go test -v ./...
+
+  seguridad:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+
+      # Oficial de Google/Go, sin servicio externo ni API key -- cruza
+      # go.mod/go.sum Y la versión de la librería estándar contra la
+      # base de datos pública de avisos, y además hace análisis de
+      # alcance (solo avisa de lo que el código realmente LLAMA, no de
+      # cualquier dependencia transitiva sin usar -- mucho menos ruido
+      # que un audit genérico).
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

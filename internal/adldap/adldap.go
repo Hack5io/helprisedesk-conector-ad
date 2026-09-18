@@ -30,12 +30,12 @@ type Cliente struct {
 }
 
 type Usuario struct {
-	DN                    string `json:"dn"`
-	SamAccountName        string `json:"samAccountName"`
-	Nombre                string `json:"nombre"`
-	Correo                string `json:"correo,omitempty"`
-	Habilitado            bool   `json:"habilitado"`
-	UltimoCambioPassword  string `json:"ultimoCambioPassword,omitempty"`
+	DN                   string `json:"dn"`
+	SamAccountName       string `json:"samAccountName"`
+	Nombre               string `json:"nombre"`
+	Correo               string `json:"correo,omitempty"`
+	Habilitado           bool   `json:"habilitado"`
+	UltimoCambioPassword string `json:"ultimoCambioPassword,omitempty"`
 }
 
 // BuscarUsuario busca por samAccountName, UPN o correo -- SOLO LECTURA.

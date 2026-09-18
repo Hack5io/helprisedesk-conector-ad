@@ -15,10 +15,10 @@ import (
 // PHP: ldap_*() no se puede fakear). Acá se prueba el round-trip HTTP
 // contra un httptest.Server, no el protocolo LDAP en sí.
 type fakeAD struct {
-	usuario      *adldap.Usuario
-	errorBuscar  error
+	usuario       *adldap.Usuario
+	errorBuscar   error
 	passwordReset string
-	errorReset   error
+	errorReset    error
 }
 
 func (f *fakeAD) BuscarUsuario(consulta string) (*adldap.Usuario, error) {

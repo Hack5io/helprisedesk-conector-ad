@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	TipoBuscarUsuario     = "buscar_usuario"
-	TipoResetearPassword  = "resetear_password"
+	TipoBuscarUsuario    = "buscar_usuario"
+	TipoResetearPassword = "resetear_password"
 )
 
 type Comando struct {

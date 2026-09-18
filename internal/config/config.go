@@ -8,16 +8,25 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 )
 
 type Config struct {
-	Token              string   `json:"token"`
-	ApiURL             string   `json:"api_url"`
-	AdHost             string   `json:"ad_host"`
-	AdDominio          string   `json:"ad_dominio"`
-	AdUsuario          string   `json:"ad_usuario"`
-	AdPassword         string   `json:"ad_password"`
+	Token      string `json:"token"`
+	ApiURL     string `json:"api_url"`
+	AdHost     string `json:"ad_host"`
+	AdDominio  string `json:"ad_dominio"`
+	AdUsuario  string `json:"ad_usuario"`
+	AdPassword string `json:"ad_password"`
+	// true si AdPassword (en el archivo, no en memoria una vez cargado)
+	// está cifrada con DPAPI en vez de en texto plano -- ver
+	// dpapi_windows.go. Ausente/false en config.json escritos por una
+	// versión vieja de install.ps1 (de antes de que esto existiera):
+	// Cargar() migra esos automáticamente la primera vez que el
+	// servicio arranca con el binario nuevo, sin que el cliente tenga
+	// que reinstalar nada a mano.
+	AdPasswordCifrada  bool     `json:"ad_password_cifrada"`
 	AdCuentasExcluidas []string `json:"ad_cuentas_excluidas"`
 	// Cada cuánto hace polling -- ver también el timeout bloqueante del
 	// lado del servidor (config('services.ad_connector') en la app
@@ -48,6 +57,26 @@ func Cargar(ruta string) (*Config, error) {
 
 	if cfg.PollSegundos <= 0 {
 		cfg.PollSegundos = 2
+	}
+
+	if cfg.AdPasswordCifrada {
+		plano, err := desproteger(cfg.AdPassword)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"no se pudo descifrar ad_password (¿config.json copiado de otra máquina? DPAPI solo descifra en la máquina que cifró): %w", err,
+			)
+		}
+		cfg.AdPassword = plano
+	} else {
+		// Contraseña en texto plano, de una instalación vieja -- se
+		// cifra y se reescribe el archivo ahora, así queda protegida en
+		// disco desde el próximo arranque en adelante. Si la migración
+		// falla por lo que sea (permisos, disco de solo lectura), el
+		// conector sigue funcionando igual con la contraseña en texto
+		// plano -- nunca por esto deja de conectarse al AD.
+		if err := cfg.migrarACifrada(ruta); err != nil {
+			log.Printf("aviso: no se pudo migrar ad_password a formato cifrado, sigue en texto plano en disco por ahora: %v", err)
+		}
 	}
 
 	return &cfg, nil
@@ -83,4 +112,29 @@ func (c *Config) Validar() error {
 	}
 
 	return nil
+}
+
+// migrarACifrada cifra la contraseña en texto plano ya cargada en "c" y
+// reescribe el archivo de config con ad_password_cifrada=true. "c" en
+// memoria NO se modifica (Cargar ya usa el valor plano para el resto de
+// la corrida) -- esto solo cambia lo que queda guardado en disco.
+func (c *Config) migrarACifrada(ruta string) error {
+	cifrada, err := proteger(c.AdPassword)
+	if err != nil {
+		return err
+	}
+
+	copia := *c
+	copia.AdPassword = cifrada
+	copia.AdPasswordCifrada = true
+
+	// 0600: solo el dueño del archivo (la cuenta bajo la que corre el
+	// servicio) puede leerlo -- ni siquiera este permiso es la defensa
+	// real (esa es DPAPI), pero reduce quién puede intentarlo.
+	datos, err := json.MarshalIndent(copia, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(ruta, datos, 0o600)
 }
