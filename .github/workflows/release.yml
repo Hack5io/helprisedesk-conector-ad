@@ -30,7 +30,7 @@ jobs:
           go build -ldflags="-s -w" -o conector-ad-windows-amd64.exe ./cmd/conector-ad
 
       - name: Publicar release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: conector-ad-windows-amd64.exe
           generate_release_notes: true
