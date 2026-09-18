@@ -1,11 +1,11 @@
 module github.com/Hack5io/helprisedesk-conector-ad
 
-go 1.23
+go 1.23.0
 
 require (
 	github.com/go-ldap/ldap/v3 v3.4.8
-	github.com/kardianos/service v1.2.2
-	golang.org/x/sys v0.18.0
+	github.com/kardianos/service v1.3.0
+	golang.org/x/sys v0.34.0
 )
 
 require (
