@@ -17,15 +17,16 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Hack5io/helprisedesk-c
 .\install.ps1 `
     -Token "<el token que te mostró HelpriseDesk>" `
     -ApiUrl "https://helprisedesk.com.ar" `
-    -AdHost "10.10.15.10" `
+    -AdHost "IP-O-HOSTNAME-DE-TU-AD" `
     -AdDominio "empresa.local" `
     -AdUsuario "cuenta-servicio" `
     -AdPassword "<contraseña de la cuenta de servicio>"
 ```
 
 La contraseña de tu cuenta de servicio de AD queda **solo en este
-servidor** (en `C:\ProgramData\HelpriseDeskConectorAD\config.json`) --
-nunca se manda ni se guarda en HelpriseDesk.
+servidor**, cifrada con DPAPI (en
+`C:\ProgramData\HelpriseDeskConectorAD\config.json`) -- nunca se manda
+ni se guarda en HelpriseDesk, ni queda en texto plano en el disco.
 
 ## Desinstalar
 
@@ -36,6 +37,30 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Hack5io/helprisedesk-c
 
 Acordate de revocar también el conector desde HelpriseDesk (Integraciones
 → Active Directory → Conector → Revocar).
+
+## Instalar en Linux (Docker)
+
+Si preferís correrlo en un servidor Linux en vez de como Servicio de
+Windows, hay una imagen publicada (amd64 y arm64):
+
+```bash
+docker run -d --name conector-ad --restart unless-stopped \
+    -e CONECTOR_TOKEN="<el token que te mostró HelpriseDesk>" \
+    -e CONECTOR_API_URL="https://helprisedesk.com.ar" \
+    -e CONECTOR_AD_HOST="IP-O-HOSTNAME-DE-TU-AD" \
+    -e CONECTOR_AD_DOMINIO="empresa.local" \
+    -e CONECTOR_AD_USUARIO="cuenta-servicio" \
+    -e CONECTOR_AD_PASSWORD="<contraseña de la cuenta de servicio>" \
+    ghcr.io/hack5io/helprisedesk-conector-ad:latest
+```
+
+Acá la contraseña **nunca se escribe a un archivo** -- vive solo en la
+variable de entorno del contenedor, mismo mecanismo que ya usás para
+cualquier otro secreto en Docker (o pasala por un Docker secret /
+Kubernetes Secret en vez de `-e`, si tu orquestador lo soporta).
+
+Variables opcionales: `CONECTOR_AD_CUENTAS_EXCLUIDAS` (lista separada
+por comas) y `CONECTOR_POLL_SEGUNDOS` (default 2).
 
 ## Requisitos
 

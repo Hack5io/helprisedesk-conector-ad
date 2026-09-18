@@ -59,6 +59,11 @@ func (p *programa) loop() {
 
 func main() {
 	rutaConfig := flag.String("config", config.RutaPorDefecto(), "Ruta al archivo config.json")
+	// Pensado para Docker (ver Dockerfile) -- ahí el secreto (AD_PASSWORD)
+	// se inyecta por variable de entorno, el mecanismo estándar de
+	// Docker/Kubernetes, en vez de por un archivo en disco. Ver
+	// config.CargarDeEnv() para las variables que espera.
+	desdeEntorno := flag.Bool("from-env", false, "Lee la configuración de variables de entorno (CONECTOR_*) en vez de -config")
 	flag.Parse()
 
 	svcConfig := &service.Config{
@@ -85,7 +90,12 @@ func main() {
 		return
 	}
 
-	cfg, err := config.Cargar(*rutaConfig)
+	var cfg *config.Config
+	if *desdeEntorno {
+		cfg, err = config.CargarDeEnv()
+	} else {
+		cfg, err = config.Cargar(*rutaConfig)
+	}
 	if err != nil {
 		log.Fatalf("configuración inválida: %v", err)
 	}

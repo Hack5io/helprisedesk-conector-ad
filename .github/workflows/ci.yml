@@ -54,6 +54,21 @@ jobs:
       - name: Tests
         run: go test -v ./...
 
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Solo build local, sin push -- confirma que el Dockerfile sigue
+      # compilando en cada push, sin publicar nada todavía (eso lo hace
+      # release.yml, solo al taggear). Un Dockerfile roto tiene que
+      # fallar acá, no recién al taggear un release real.
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+
   seguridad:
     runs-on: ubuntu-latest
     steps:

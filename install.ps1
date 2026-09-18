@@ -12,7 +12,7 @@
 
 .EXAMPLE
     .\install.ps1 -Token "..." -ApiUrl "https://helprisedesk.com.ar" `
-        -AdHost "10.10.15.10" -AdDominio "empresa.local" `
+        -AdHost "IP-O-HOSTNAME-DE-TU-AD" -AdDominio "empresa.local" `
         -AdUsuario "cuenta-servicio" -AdPassword "..."
 #>
 param(

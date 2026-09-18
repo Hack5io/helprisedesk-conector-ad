@@ -42,20 +42,22 @@ func TestCargarConfigCompletaFunciona(t *testing.T) {
 // Una instalación vieja (de antes de que ad_password_cifrada existiera)
 // tiene la contraseña en texto plano y sin ese campo -- Cargar() tiene
 // que seguir funcionando con ella (nunca romper un conector ya andando
-// por una migración) Y dejar el archivo reescrito con la contraseña
-// cifrada para la próxima vez. La criptografía REAL de DPAPI no se
-// puede probar acá (solo existe en Windows, ver dpapi_windows.go) --
-// esto prueba la lógica de migración en sí con el stub
-// (proteger/desproteger no-op en cualquier SO que no sea Windows).
-func TestCargarConfigViejaSinCifrarSeMigra(t *testing.T) {
-	ruta := escribirConfigTemporal(t, `{
+// por un intento de migración) aunque el intento de cifrar falle. En
+// este SO (el stub, ver dpapi_stub.go) proteger() siempre falla a
+// propósito -- DPAPI no existe acá -- así que el archivo queda IGUAL,
+// sin migrar; el camino "se migra de verdad" solo se puede probar en
+// Windows (ver dpapi_windows.go), acá se prueba el "no revienta nada
+// si no se puede".
+func TestCargarConfigViejaSinCifrarSiguienFuncionaAunqueNoPuedaMigrar(t *testing.T) {
+	contenidoOriginal := `{
 		"token": "abc123",
 		"api_url": "https://helprisedesk.test",
 		"ad_host": "10.10.15.10",
 		"ad_dominio": "empresa.local",
 		"ad_usuario": "cuenta-servicio",
 		"ad_password": "clave-en-texto-plano"
-	}`)
+	}`
+	ruta := escribirConfigTemporal(t, contenidoOriginal)
 
 	cfg, err := Cargar(ruta)
 	if err != nil {
@@ -67,30 +69,81 @@ func TestCargarConfigViejaSinCifrarSeMigra(t *testing.T) {
 
 	datos, err := os.ReadFile(ruta)
 	if err != nil {
-		t.Fatalf("no se pudo releer el archivo migrado: %v", err)
+		t.Fatalf("no se pudo releer el archivo: %v", err)
 	}
-	if !strings.Contains(string(datos), `"ad_password_cifrada": true`) {
-		t.Fatalf("el archivo debería haber quedado marcado como cifrado tras la migración, quedó: %s", datos)
+	if strings.Contains(string(datos), `"ad_password_cifrada": true`) {
+		t.Fatalf("no debería haberse marcado como cifrado -- proteger() falla en este SO, quedó: %s", datos)
 	}
 }
 
-func TestCargarConfigYaCifradaSeDescifra(t *testing.T) {
+// Un config.json cifrado con DPAPI en Windows, copiado/usado en
+// cualquier otro SO, tiene que fallar EXPLÍCITAMENTE -- nunca fingir
+// que lo descifró y devolver basura o la cadena cifrada como si fuera
+// la contraseña real.
+func TestCargarConfigCifradaEnOtroSoFallaExplicito(t *testing.T) {
 	ruta := escribirConfigTemporal(t, `{
 		"token": "abc123",
 		"api_url": "https://helprisedesk.test",
 		"ad_host": "10.10.15.10",
 		"ad_dominio": "empresa.local",
 		"ad_usuario": "cuenta-servicio",
-		"ad_password": "ya-viene-cifrada-en-el-stub-es-igual",
+		"ad_password": "blob-cifrado-de-windows-illegible-aca",
 		"ad_password_cifrada": true
 	}`)
 
-	cfg, err := Cargar(ruta)
+	if _, err := Cargar(ruta); err == nil {
+		t.Fatal("esperaba un error -- este SO no puede descifrar DPAPI")
+	}
+}
+
+func TestCargarDeEnvCompletaFunciona(t *testing.T) {
+	t.Setenv("CONECTOR_TOKEN", "abc123")
+	t.Setenv("CONECTOR_API_URL", "https://helprisedesk.test")
+	t.Setenv("CONECTOR_AD_HOST", "10.10.15.10")
+	t.Setenv("CONECTOR_AD_DOMINIO", "empresa.local")
+	t.Setenv("CONECTOR_AD_USUARIO", "cuenta-servicio")
+	t.Setenv("CONECTOR_AD_PASSWORD", "clave")
+	t.Setenv("CONECTOR_AD_CUENTAS_EXCLUIDAS", "administrator, invitado")
+	t.Setenv("CONECTOR_POLL_SEGUNDOS", "5")
+
+	cfg, err := CargarDeEnv()
 	if err != nil {
 		t.Fatalf("no esperaba error: %v", err)
 	}
-	if cfg.AdPassword != "ya-viene-cifrada-en-el-stub-es-igual" {
-		t.Fatalf("esperaba la contraseña descifrada (passthrough en el stub), dio %q", cfg.AdPassword)
+	if cfg.Token != "abc123" || cfg.AdPassword != "clave" {
+		t.Fatalf("config mal armada desde el entorno: %+v", cfg)
+	}
+	if len(cfg.AdCuentasExcluidas) != 2 || cfg.AdCuentasExcluidas[0] != "administrator" || cfg.AdCuentasExcluidas[1] != "invitado" {
+		t.Fatalf("lista de cuentas excluidas mal parseada: %v", cfg.AdCuentasExcluidas)
+	}
+	if cfg.PollSegundos != 5 {
+		t.Fatalf("esperaba poll_segundos=5, dio %d", cfg.PollSegundos)
+	}
+}
+
+func TestCargarDeEnvSinPollSegundosUsaElDefault(t *testing.T) {
+	t.Setenv("CONECTOR_TOKEN", "abc123")
+	t.Setenv("CONECTOR_API_URL", "https://helprisedesk.test")
+	t.Setenv("CONECTOR_AD_HOST", "10.10.15.10")
+	t.Setenv("CONECTOR_AD_DOMINIO", "empresa.local")
+	t.Setenv("CONECTOR_AD_USUARIO", "cuenta-servicio")
+	t.Setenv("CONECTOR_AD_PASSWORD", "clave")
+
+	cfg, err := CargarDeEnv()
+	if err != nil {
+		t.Fatalf("no esperaba error: %v", err)
+	}
+	if cfg.PollSegundos != 2 {
+		t.Fatalf("esperaba el default de 2 segundos, dio %d", cfg.PollSegundos)
+	}
+}
+
+func TestCargarDeEnvIncompletaFalla(t *testing.T) {
+	t.Setenv("CONECTOR_TOKEN", "abc123")
+	// El resto de las variables quedan sin setear.
+
+	if _, err := CargarDeEnv(); err == nil {
+		t.Fatal("esperaba un error por variables faltantes")
 	}
 }
 

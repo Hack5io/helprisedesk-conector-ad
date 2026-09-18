@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -82,6 +84,51 @@ func Cargar(ruta string) (*Config, error) {
 	return &cfg, nil
 }
 
+// CargarDeEnv arma la config a partir de variables de entorno en vez de
+// un archivo -- pensado para Docker (ver Dockerfile), donde el
+// mecanismo estándar para pasar secretos es el entorno del proceso
+// (env var / Docker secret / Kubernetes secret), no un archivo en
+// disco. A propósito NUNCA escribe nada a disco ni pasa por
+// proteger()/desproteger() -- no hay archivo que cifrar, la contraseña
+// vive solo en la memoria de este proceso mientras corre, como
+// cualquier otro secreto inyectado por variable de entorno en un
+// contenedor.
+func CargarDeEnv() (*Config, error) {
+	cfg := &Config{
+		Token:      os.Getenv("CONECTOR_TOKEN"),
+		ApiURL:     os.Getenv("CONECTOR_API_URL"),
+		AdHost:     os.Getenv("CONECTOR_AD_HOST"),
+		AdDominio:  os.Getenv("CONECTOR_AD_DOMINIO"),
+		AdUsuario:  os.Getenv("CONECTOR_AD_USUARIO"),
+		AdPassword: os.Getenv("CONECTOR_AD_PASSWORD"),
+	}
+
+	if excluidas := strings.TrimSpace(os.Getenv("CONECTOR_AD_CUENTAS_EXCLUIDAS")); excluidas != "" {
+		for _, cuenta := range strings.Split(excluidas, ",") {
+			if cuenta = strings.TrimSpace(cuenta); cuenta != "" {
+				cfg.AdCuentasExcluidas = append(cfg.AdCuentasExcluidas, cuenta)
+			}
+		}
+	}
+
+	cfg.PollSegundos = 2
+	if poll := os.Getenv("CONECTOR_POLL_SEGUNDOS"); poll != "" {
+		n, err := strconv.Atoi(poll)
+		if err != nil {
+			return nil, fmt.Errorf("CONECTOR_POLL_SEGUNDOS tiene que ser un número entero, llegó %q: %w", poll, err)
+		}
+		if n > 0 {
+			cfg.PollSegundos = n
+		}
+	}
+
+	if err := cfg.Validar(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
 func (c *Config) Validar() error {
 	faltantes := []string{}
 
@@ -108,7 +155,7 @@ func (c *Config) Validar() error {
 	}
 
 	if len(faltantes) > 0 {
-		return fmt.Errorf("faltan campos en config.json: %v", faltantes)
+		return fmt.Errorf("faltan campos de configuración: %v", faltantes)
 	}
 
 	return nil
